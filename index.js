@@ -4,37 +4,24 @@ const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
+const mongoose = require("mongoose")
+const { Rooms } = require('./chatschema')
+const bodyParser = require("body-parser")
+
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json())
 
 
-var rooms = [
-    {
-        'roomID': 1,
-        'chats': [
-            {
-                'message': 'Hey',
-                'username': 'Arooba'
-            },
-            {
-                'message': 'How Are you',
-                'username': 'Sana'
-            }
-        ]
-    },
-    {
-        'roomID': 2,
-        'chats': [
-            {
-                'message': 'Hey',
-                'username': 'Arooba'
-            },
-            {
-                'message': 'How Are you',
-                'username': 'Sana'
-            }
-        ]
-    }
-];
 
+app.post('/createroom', async (req, res) => {
+    const createRoom = Rooms({
+        partner1: req.body.partner1,
+        partner2: req.body.partner2,
+    })
+    const creating = await createRoom.save()
+
+    return res.status(200).json({ 'success': true, 'match': true, 'message': 'Success', data: creating, })
+});
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
@@ -43,22 +30,63 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
     console.log('a user connected');
     socket.on('getRoomChats', async (msg) => {
-        console.log(msg);
-        io.emit('messagerecieved', rooms.filter(x => x.roomID == msg.roomID)[0]);
+        const getroomchat = await Rooms.findById(msg.roomid);
+        io.emit('messagerecieved', getroomchat.chats);
+    });
+
+    socket.on('messageseen', async (msg) => {
+        Rooms.findOne({ _id: msg.roomid }).then(async doc => {
+            for (let i = 0; i < doc.chats.length; i++) {
+                if (doc.chats[i].partner == msg.partner) {
+                    doc.chats[i].lastSeen = true;
+                }
+            }
+            const sendMessagetoRoom = await Rooms.findByIdAndUpdate(msg.roomid, {
+                chats: doc.chats
+            }, {
+                new: true
+            })
+            io.emit('messagerecieved', sendMessagetoRoom.chats);
+
+        }).catch(err => {
+            console.log(err)
+        });
     });
 
     socket.on('sendMessage', async (msg) => {
-        console.log(msg);
-        console.log(rooms.filter(x => x.roomID == msg.roomID));
-        rooms.filter(x => x.roomID == msg.roomID)[0].chats.push({
-            'message': msg.message,
-            'username': msg.username
+        const sendMessagetoRoom = await Rooms.findByIdAndUpdate(msg.roomid, {
+            $push: {
+                chats: {
+                    "message": msg.message,
+                    "messagetype": msg.messagetype,
+                    "partner": msg.partner,
+                }
+            }
+        }, {
+            new: true
         })
-        io.emit('messagerecieved', rooms[0]);
+
+        io.emit('messagerecieved', sendMessagetoRoom.chats);
     });
 
 });
 
-server.listen(3000, () => {
-    console.log('listening on *:3000');
+
+mongoose.connect("mongodb+srv://umaiz:node@cluster0.ojrgi.mongodb.net/interact-dev", {
+    dbName: 'chata-data'
+})
+    .then(() => {
+        console.log("database connected");
+    })
+    .catch(() => {
+        console.log("database not connected");
+    })
+
+
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log(`App listening on port ${PORT}!`);
 });
+
+
