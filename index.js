@@ -35,22 +35,33 @@ io.on('connection', (socket) => {
     });
 
     socket.on('messageseen', async (msg) => {
-        Rooms.findOne({ _id: msg.roomid }).then(async doc => {
-            for (let i = 0; i < doc.chats.length; i++) {
-                if (doc.chats[i].partner == msg.partner) {
-                    doc.chats[i].lastSeen = true;
-                }
-            }
-            const sendMessagetoRoom = await Rooms.findByIdAndUpdate(msg.roomid, {
-                chats: doc.chats
-            }, {
-                new: true
-            })
-            io.emit('messagerecieved', sendMessagetoRoom.chats);
+        console.log(msg.roomid)
+        const sendMessagetoRoom = await Rooms.findOneAndUpdate(
+            { _id: msg.roomid, 'chats.partner': msg.partner },
+            { 'chats.$.lastSeen': true },
+            { new: true }
+        );
 
-        }).catch(err => {
-            console.log(err)
-        });
+        if (sendMessagetoRoom) {
+            io.emit('messagerecieved', sendMessagetoRoom.chats);
+        }
+
+        // Rooms.findOne({ _id: msg.roomid }).then(async doc => {
+        //     for (let i = 0; i < doc.chats.length; i++) {
+        //         if (doc.chats[i].partner == msg.partner) {
+        //             doc.chats[i].lastSeen = true;
+        //         }
+        //     }
+        //     const sendMessagetoRoom = await Rooms.findByIdAndUpdate(msg.roomid, {
+        //         chats: doc.chats
+        //     }, {
+        //         new: true
+        //     })
+        //     io.emit('messagerecieved', sendMessagetoRoom.chats);
+
+        // }).catch(err => {
+        //     console.log(err)
+        // });
     });
 
     socket.on('sendMessage', async (msg) => {
